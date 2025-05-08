@@ -201,7 +201,7 @@ args len argl!
 # C_UNSAFE="$C_PURPLE"
 
 
-[id -n -u] os; id!
+# [id -n -u] os; id!
 
 # # Get current username so we can check .git dir ownership.
 # ID="$(id -n -u)"
@@ -225,13 +225,61 @@ args @index skip cliDirs!
 ("." dirs!)
 iff
 
+pwd oldDir!
+
 @dirs
 (
     outerDir!
-    [find '-L' @outerDir '-type' 'd']o;
+    @oldDir cd
+    @outerDir cd
+    pwd wl
+
+    @outerDir wl
+    # [find -L @outerDir -mindepth 1 -maxdepth 1 -type d]o;
+    dirs
     (
+        projDir!
+        $"{@projDir}/.git" gitDir!
+        $"{@projDir}/.git/config" gitConf!
 
+        @gitDir isDir not ($"{@projDir}: not a git repo" wl) iff
 
+        # TODO:
+        # Check if the repo is safe (https://github.blog/2022-04-12-git-security-vulnerability-announced/)
+        # Check for ignore
+        # Check if repo is locked
+
+        # Do a 'git fetch' if requested
+        @doFetch
+        ($"Fetching {@gitDir dirname}..." wl [git --work-tree @gitDir dirname --git-dir @gitDir fetch '-q']oc; drop)
+        iff
+
+        # Refresh the index, or we might get wrong results.
+        "Refreshing index..." wl
+        [git --work-tree @gitDir dirname --git-dir @gitDir update-index '-q' --refresh]oc ec; drop drop
+
+        # Find all remote branches that have been checked out and figure out if
+        # they need a push or pull. We do this with various tests and put the name
+        # of the branches in NEEDS_XXXX, seperated by newlines. After we're done,
+        # we remove duplicates from NEEDS_XXX.
+        '' NEEDS_PUSH_BRANCHES!
+        '' NEEDS_PULL_BRANCHES!
+        '' NEEDS_UPSTREAM_BRANCHES!
+
+        $"{@gitDir}/refs/heads/*" glob (isFile) filter
+        (
+            refHead!
+            $"Ref head: {@refHead}" wl
+            [git --git-dir @gitDir rev-parse --abbrev-ref --symbolic-full-name @refHead basename "@{u}" +] os ec ?
+            result! drop remoteBranch!
+            @result
+            (
+                # Is tracking branch on success code
+                $"{@refHead basename} is tracking a remote branch {@remoteBranch}" wle
+            )
+            iff
+        )
+        each
     ) each
 ) each
 
