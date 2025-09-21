@@ -340,9 +340,9 @@ pwd oldDir!
         # NEEDS_PULL_BRANCHES=$(printf "$NEEDS_PULL_BRANCHES" | sort | uniq | tr '\n' ',' | sed "s/^,\(.*\),$/\1/")
         # NEEDS_UPSTREAM_BRANCHES=$(printf "$NEEDS_UPSTREAM_BRANCHES" | sort | uniq | tr '\n' ',' | sed "s/^,\(.*\),$/\1/")
 
-        @NEEDS_PUSH_BRANCHES     sortu unlines "\n" "," findReplace NEEDS_PUSH_BRANCHES_STR!
-        @NEEDS_PULL_BRANCHES     sortu unlines "\n" "," findReplace NEEDS_PULL_BRANCHES_STR!
-        @NEEDS_UPSTREAM_BRANCHES sortu unlines "\n" "," findReplace NEEDS_UPSTREAM_BRANCHES_STR!
+        @NEEDS_PUSH_BRANCHES     sort uniq unlines "\n" "," findReplace NEEDS_PUSH_BRANCHES_STR!
+        @NEEDS_PULL_BRANCHES     sort uniq unlines "\n" "," findReplace NEEDS_PULL_BRANCHES_STR!
+        @NEEDS_UPSTREAM_BRANCHES sort uniq unlines "\n" "," findReplace NEEDS_UPSTREAM_BRANCHES_STR!
 
         # # # # Find out if there are unstaged, uncommitted or untracked changes
         [git -C @projDir diff-index --quiet HEAD '--'] oc ec ? unStaged! drop drop
@@ -364,10 +364,12 @@ pwd oldDir!
             @statusNeeds " " join allStatuses!
             $"{@projDir} {@allStatuses}" wl
         )
-        ( $"{@projDir} {@C_OK}ok{@C_RESET}" wl)
+        (
+            @excludeOk not ($"{@projDir} {@C_OK}ok{@C_RESET}" wl) iff
+        )
         iff
 
-    ) each
+    ) each # Each git directory
 ) each
 
 
