@@ -260,10 +260,10 @@ pwd oldDir!
     outerDir!
     @oldDir cd
     @outerDir cd
-    pwd wl
-
-    @outerDir wl
+    # pwd wl
+    # @outerDir wl
     # [find -L @outerDir -mindepth 1 -maxdepth 1 -type d]o;
+
     dirs
     (
         projDir!
@@ -272,103 +272,105 @@ pwd oldDir!
 
         # @projDir str wl
 
-        @gitDir isDir not ($"{@projDir}: not a git repo" wl) iff
-
-        # TODO:
-        # Check if the repo is safe (https://github.blog/2022-04-12-git-security-vulnerability-announced/)
-        # Check for ignore
-        # Check if repo is locked
-
-        # Do a 'git fetch' if requested
-        @doFetch
-        ($"Fetching {@gitDir dirname}..." wl [git -C @projDir fetch '-q']oc; drop)
-        iff
-
-        # Refresh the index, or we might get wrong results.
-        # $"Refreshing index for {@projDir}..." wl
-        # $"{@gitDir}/index.lock" isFile ("Is Locked" wl) ("Not locked" wl) iff
-        [git -C @projDir update-index '-q' --refresh];
-        # $"{@gitDir}/index.lock" isFile ("Still Locked" wl) ("Still not locked" wl) iff
-
-        # Find all remote branches that have been checked out and figure out if
-        # they need a push or pull. We do this with various tests and put the name
-        # of the branches in NEEDS_XXXX, seperated by newlines. After we're done,
-        # we remove duplicates from NEEDS_XXX.
-        [] NEEDS_PUSH_BRANCHES!
-        [] NEEDS_PULL_BRANCHES!
-        [] NEEDS_UPSTREAM_BRANCHES!
-
-        $"{@gitDir}/refs/heads/*" glob (isFile) filter
-        0:0
+        @gitDir isDir not
+        ($"{@projDir}: not a git repo" wl)
         (
-            fullRefHead!
-            @fullRefHead basename refHead!
-            # $"Ref head: {@refHead}" wl
-            [git -C @projDir rev-parse --abbrev-ref --symbolic-full-name @refHead basename "@{u}" +] os ec ?
-            exitCode!
-            drop # Drop stdErr
-            upstream!
-            @exitCode
+            # TODO:
+            # Check if the repo is safe (https://github.blog/2022-04-12-git-security-vulnerability-announced/)
+            # Check for ignore
+            # Check if repo is locked
+
+            # Do a 'git fetch' if requested
+            @doFetch
+            ($"Fetching {@gitDir dirname}..." wl [git -C @projDir fetch '-q']oc; drop)
+            iff
+
+            # Refresh the index, or we might get wrong results.
+            # $"Refreshing index for {@projDir}..." wl
+            # $"{@gitDir}/index.lock" isFile ("Is Locked" wl) ("Not locked" wl) iff
+            [git -C @projDir update-index '-q' --refresh];
+            # $"{@gitDir}/index.lock" isFile ("Still Locked" wl) ("Still not locked" wl) iff
+
+            # Find all remote branches that have been checked out and figure out if
+            # they need a push or pull. We do this with various tests and put the name
+            # of the branches in NEEDS_XXXX, seperated by newlines. After we're done,
+            # we remove duplicates from NEEDS_XXX.
+            [] NEEDS_PUSH_BRANCHES!
+            [] NEEDS_PULL_BRANCHES!
+            [] NEEDS_UPSTREAM_BRANCHES!
+
+            $"{@gitDir}/refs/heads/*" glob (isFile) filter
+            0:0
             (
-                # # Branch is tracking a remote branch. Find out how much behind /
-                # # ahead it is of that remote branch.
-                [git -C @projDir rev-list --left-right --count $"{@refHead}...{@upstream}"] os; cntAheadBehind!
-                @cntAheadBehind wsplit :0: cntAhead!
-                @cntAheadBehind wsplit :1: cntBehind!
+                fullRefHead!
+                @fullRefHead basename refHead!
+                # $"Ref head: {@refHead}" wl
+                [git -C @projDir rev-parse --abbrev-ref --symbolic-full-name @refHead basename "@{u}" +] os ec ?
+                exitCode!
+                drop # Drop stdErr
+                upstream!
+                @exitCode
+                (
+                    # # Branch is tracking a remote branch. Find out how much behind /
+                    # # ahead it is of that remote branch.
+                    [git -C @projDir rev-list --left-right --count $"{@refHead}...{@upstream}"] os; cntAheadBehind!
+                    @cntAheadBehind wsplit :0: cntAhead!
+                    @cntAheadBehind wsplit :1: cntBehind!
 
-                # CNT_AHEAD_BEHIND=$(git --git-dir "$GIT_DIR" rev-list --left-right --count "$REF_HEAD...$UPSTREAM")
-                # CNT_AHEAD=$(echo "$CNT_AHEAD_BEHIND" | awk '{ print $1 }')
-                # CNT_BEHIND=$(echo "$CNT_AHEAD_BEHIND" | awk '{ print $2 }')
+                    # CNT_AHEAD_BEHIND=$(git --git-dir "$GIT_DIR" rev-list --left-right --count "$REF_HEAD...$UPSTREAM")
+                    # CNT_AHEAD=$(echo "$CNT_AHEAD_BEHIND" | awk '{ print $1 }')
+                    # CNT_BEHIND=$(echo "$CNT_AHEAD_BEHIND" | awk '{ print $2 }')
 
-                @cntAhead  toInt 0 > (@NEEDS_PUSH_BRANCHES @refHead append drop) iff
-                @cntBehind toInt 0 > (@NEEDS_PULL_BRANCHES @refHead append drop) iff
+                    @cntAhead  toInt 0 > (@NEEDS_PUSH_BRANCHES @refHead append drop) iff
+                    @cntBehind toInt 0 > (@NEEDS_PULL_BRANCHES @refHead append drop) iff
 
-                # Is tracking branch on success code
-                # $"{@refHead basename} is tracking a remote branch {@remoteBranch}" wle
-                # TODO: Add branch off another branch items
+                    # Is tracking branch on success code
+                    # $"{@refHead basename} is tracking a remote branch {@remoteBranch}" wle
+                    # TODO: Add branch off another branch items
+                )
+                (
+                    # Branch does not have an upstream (local/remote branch).
+                    @NEEDS_UPSTREAM_BRANCHES @refHead append drop
+                )
+                iff
+            )
+            each # Each branch
+
+            # # Remove duplicates from NEEDS_XXXX and make comma-seperated
+            # NEEDS_PUSH_BRANCHES=$(printf "$NEEDS_PUSH_BRANCHES" | sort | uniq | tr '\n' ',' | sed "s/^,\(.*\),$/\1/")
+            # NEEDS_PULL_BRANCHES=$(printf "$NEEDS_PULL_BRANCHES" | sort | uniq | tr '\n' ',' | sed "s/^,\(.*\),$/\1/")
+            # NEEDS_UPSTREAM_BRANCHES=$(printf "$NEEDS_UPSTREAM_BRANCHES" | sort | uniq | tr '\n' ',' | sed "s/^,\(.*\),$/\1/")
+
+            @NEEDS_PUSH_BRANCHES     sort uniq unlines "\n" "," findReplace NEEDS_PUSH_BRANCHES_STR!
+            @NEEDS_PULL_BRANCHES     sort uniq unlines "\n" "," findReplace NEEDS_PULL_BRANCHES_STR!
+            @NEEDS_UPSTREAM_BRANCHES sort uniq unlines "\n" "," findReplace NEEDS_UPSTREAM_BRANCHES_STR!
+
+            # # # # Find out if there are unstaged, uncommitted or untracked changes
+            [git -C @projDir diff-index --quiet HEAD '--'] oc ec ? unStaged! drop drop
+            # [git -C @projDir diff-files --quiet --ignore-submodules '--'] ? unCommitted!
+            [git -C @projDir diff-files --quiet --ignore-submodules '--'] oc ec ? unCommitted! drop drop
+            [git -C @projDir ls-files --exclude-standard --others] * ; unTracked!
+
+            [] statusNeeds!
+            @NEEDS_PUSH_BRANCHES     len 0 > (@statusNeeds $"Needs push ({@NEEDS_PUSH_BRANCHES_STR})" append drop) iff
+            @NEEDS_PULL_BRANCHES     len 0 > (@statusNeeds $"Needs pull ({@NEEDS_PULL_BRANCHES_STR})" append drop) iff
+            @NEEDS_UPSTREAM_BRANCHES len 0 > (@statusNeeds $"Needs upstream ({@NEEDS_UPSTREAM_BRANCHES_STR})" append drop) iff
+
+            # @unStaged 0 >    (@statusNeeds $"Unstaged changes" append drop) iff
+            @unCommitted 0 > (@statusNeeds $"{@C_NEEDS_COMMIT}Uncommitted changes{@C_RESET}" append drop) iff
+            @unTracked len 0 >   (@statusNeeds $"{@C_UNTRACKED}Untracked files{@C_RESET}" append drop) iff
+
+            @statusNeeds len 0 >
+            (
+                @statusNeeds " " join allStatuses!
+                $"{@projDir} {@allStatuses}" wl
             )
             (
-                # Branch does not have an upstream (local/remote branch).
-                @NEEDS_UPSTREAM_BRANCHES @refHead append drop
+                @excludeOk not ($"{@projDir} {@C_OK}ok{@C_RESET}" wl) iff
             )
             iff
         )
-        each
-
-        # # Remove duplicates from NEEDS_XXXX and make comma-seperated
-        # NEEDS_PUSH_BRANCHES=$(printf "$NEEDS_PUSH_BRANCHES" | sort | uniq | tr '\n' ',' | sed "s/^,\(.*\),$/\1/")
-        # NEEDS_PULL_BRANCHES=$(printf "$NEEDS_PULL_BRANCHES" | sort | uniq | tr '\n' ',' | sed "s/^,\(.*\),$/\1/")
-        # NEEDS_UPSTREAM_BRANCHES=$(printf "$NEEDS_UPSTREAM_BRANCHES" | sort | uniq | tr '\n' ',' | sed "s/^,\(.*\),$/\1/")
-
-        @NEEDS_PUSH_BRANCHES     sort uniq unlines "\n" "," findReplace NEEDS_PUSH_BRANCHES_STR!
-        @NEEDS_PULL_BRANCHES     sort uniq unlines "\n" "," findReplace NEEDS_PULL_BRANCHES_STR!
-        @NEEDS_UPSTREAM_BRANCHES sort uniq unlines "\n" "," findReplace NEEDS_UPSTREAM_BRANCHES_STR!
-
-        # # # # Find out if there are unstaged, uncommitted or untracked changes
-        [git -C @projDir diff-index --quiet HEAD '--'] oc ec ? unStaged! drop drop
-        # [git -C @projDir diff-files --quiet --ignore-submodules '--'] ? unCommitted!
-        [git -C @projDir diff-files --quiet --ignore-submodules '--'] oc ec ? unCommitted! drop drop
-        [git -C @projDir ls-files --exclude-standard --others] oc ec ? unTracked! drop drop
-
-        [] statusNeeds!
-        @NEEDS_PUSH_BRANCHES     len 0 > (@statusNeeds $"Needs push ({@NEEDS_PUSH_BRANCHES_STR})" append drop) iff
-        @NEEDS_PULL_BRANCHES     len 0 > (@statusNeeds $"Needs pull ({@NEEDS_PULL_BRANCHES_STR})" append drop) iff
-        @NEEDS_UPSTREAM_BRANCHES len 0 > (@statusNeeds $"Needs upstream ({@NEEDS_UPSTREAM_BRANCHES_STR})" append drop) iff
-
-        # @unStaged 0 >    (@statusNeeds $"Unstaged changes" append drop) iff
-        @unCommitted 0 > (@statusNeeds $"{@C_NEEDS_COMMIT}Uncommitted changes{@C_RESET}" append drop) iff
-        @unTracked 0 >   (@statusNeeds $"Untracked files" append drop) iff
-
-        @statusNeeds len 0 >
-        (
-            @statusNeeds " " join allStatuses!
-            $"{@projDir} {@allStatuses}" wl
-        )
-        (
-            @excludeOk not ($"{@projDir} {@C_OK}ok{@C_RESET}" wl) iff
-        )
-        iff
-
+        iff # if for checking whether the dir actually was a git directory.
     ) each # Each git directory
 ) each
 
